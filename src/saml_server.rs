@@ -66,7 +66,7 @@ impl SamlServer {
         app.server.replace(Some(join));
         let log = app.log.clone();
         let addr = app.config.addresses.clone();
-        let port = app.config.remote.clone();
+        let remote = app.config.remote.clone();
         let config = app.config.config.clone();
         let st = app.openvpn_connection.clone();
         let stager = app.state.clone();
@@ -89,11 +89,13 @@ impl SamlServer {
                 config.as_ref().unwrap().clone()
             };
             let port = {
-                let port = port.clone();
-                let port = port.lock().unwrap();
+                let port = remote.lock().unwrap();
                 port.as_ref().unwrap().clone().1
             };
-
+            let proto = {
+                let proto = remote.lock().unwrap();
+                proto.as_ref().unwrap().clone().2
+            };
             let info = Arc::new(ProcessInfo::new());
 
             let handle = {
@@ -101,7 +103,7 @@ impl SamlServer {
                 let log = log.clone();
                 let manager = manager.clone();
                 runtime.clone().spawn(async move {
-                    let con = connect_ovpn(log.clone(), config, addr, port, data, info).await;
+                    let con = connect_ovpn(log.clone(), config, addr, port, proto, data, info).await;
                     let man = manager.lock().unwrap();
                     man.as_ref().unwrap().try_disconnect();
                     con

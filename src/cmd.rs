@@ -65,7 +65,7 @@ pub struct AwsSaml {
     pub pwd: String,
 }
 
-pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16) -> AwsSaml {
+pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16, proto: String) -> AwsSaml {
     let (shared_dir, openvpn_file) = &*RUNTIME_PATHS;
     let path = shared_dir.join(DEFAULT_PWD_FILE);
     if !path.exists() {
@@ -81,7 +81,7 @@ pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16) -
         .arg("--verb")
         .arg("3")
         .arg("--proto")
-        .arg("udp")
+        .arg(proto)
         .arg("--remote")
         .arg(addr)
         .arg(format!("{}", port))
@@ -145,6 +145,7 @@ pub async fn connect_ovpn(
     config: PathBuf,
     addr: String,
     port: u16,
+    proto: String,
     saml: Saml,
     process_info: Arc<ProcessInfo>,
 ) -> i32 {
@@ -171,7 +172,7 @@ pub async fn connect_ovpn(
         .arg("--inactive")
         .arg("3600")
         .arg("--proto")
-        .arg("udp")
+        .arg(proto)
         .arg("--remote")
         .arg(addr)
         .arg(format!("{}", port))

@@ -25,7 +25,7 @@ lazy_static! {
 
 pub struct Config {
     pub addresses: Arc<StdMutex<Option<Vec<IpAddr>>>>,
-    pub remote: Arc<StdMutex<Option<(String, u16)>>>,
+    pub remote: Arc<StdMutex<Option<(String, u16, String)>>>,
     pub config: Arc<StdMutex<Option<PathBuf>>>,
     pub pwd: Arc<TokioMutex<Option<Pwd>>>,
 }
@@ -108,8 +108,8 @@ fn has_key(key: String) -> bool {
     return false;
 }
 
-fn get_remote(content: &String) -> (String, u16) {
-    return content
+fn get_remote(content: &String) -> (String, u16, String) {
+    let remote = content
         .lines()
         .filter(|p| p.starts_with("remote "))
         .map(|p| {
@@ -119,4 +119,13 @@ fn get_remote(content: &String) -> (String, u16) {
         })
         .next()
         .unwrap();
+
+    let proto = content
+        .lines()
+        .filter_map(|p| p.strip_prefix("proto "))
+        .next()
+        .unwrap_or("udp")
+        .to_string();
+
+    return (remote.0, remote.1, proto)
 }

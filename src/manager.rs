@@ -100,6 +100,7 @@ impl ConnectionManager {
                     let first_addr = addrs[0].to_string();
                     let config_file = file.clone();
                     let port = remote.1;
+                    let proto = remote.2.clone();
 
                     let pwd = {
                         let app = self.app.lock().unwrap();
@@ -114,7 +115,7 @@ impl ConnectionManager {
 
                         app.runtime.spawn(async move {
                             let mut lock = pwd.lock().await;
-                            let auth = run_ovpn(log, config_file, first_addr, port).await; // Failure point addrs[0]
+                            let auth = run_ovpn(log, config_file, first_addr, port, proto).await; // Failure point addrs[0]
                             *lock = Some(Pwd { pwd: auth.pwd });
 
                             open::that(auth.url).unwrap()
