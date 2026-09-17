@@ -14,8 +14,21 @@ use tokio::io::AsyncBufReadExt;
 const DEFAULT_PWD_FILE: &str = "./pwd.txt";
 
 lazy_static! {
-    static ref SHARED_DIR: String = std::env::var("SHARED_DIR").unwrap_or("./share".to_string());
-    static ref OPENVPN_FILE: String = std::env::var("OPENVPN_FILE").unwrap_or("./openvpn/bin/openvpn".to_string());
+    static ref SHARED_DIR: String = std::env::var("SHARED_DIR")
+        .unwrap_or_else(|_| exe_dir().join("share").to_string_lossy().into_owned());
+    static ref OPENVPN_FILE: String = std::env::var("OPENVPN_FILE").unwrap_or_else(|_| {
+        Path::new(SHARED_DIR.as_str())
+            .join("openvpn/bin/openvpn")
+            .to_string_lossy()
+            .into_owned()
+    });
+}
+
+fn exe_dir() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 pub struct ProcessInfo {
