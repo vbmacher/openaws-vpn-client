@@ -65,7 +65,13 @@ pub struct AwsSaml {
     pub pwd: String,
 }
 
-pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16, proto: String) -> AwsSaml {
+pub async fn run_ovpn(
+    log: Arc<Log>,
+    config: PathBuf,
+    addr: String,
+    port: u16,
+    proto: String,
+) -> AwsSaml {
     let (shared_dir, openvpn_file) = &*RUNTIME_PATHS;
     let path = shared_dir.join(DEFAULT_PWD_FILE);
     if !path.exists() {
@@ -150,6 +156,7 @@ pub async fn connect_ovpn(
     process_info: Arc<ProcessInfo>,
 ) -> i32 {
     let (shared_dir, openvpn_file) = &*RUNTIME_PATHS;
+    let dns_helper = shared_dir.join("update-systemd-resolved");
     let temp = TempDir::new().unwrap();
     let temp_pwd = temp.child("pwd.txt");
 
@@ -178,6 +185,12 @@ pub async fn connect_ovpn(
         .arg(format!("{}", port))
         .arg("--script-security")
         .arg("2")
+        .arg("--up")
+        .arg(&dns_helper)
+        .arg("--up-restart")
+        .arg("--down")
+        .arg(&dns_helper)
+        .arg("--down-pre")
         .arg("--route-up")
         .arg(rm_file_command(&b))
         .arg("--auth-user-pass")
