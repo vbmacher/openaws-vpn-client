@@ -14,8 +14,37 @@ use tokio::io::AsyncBufReadExt;
 const DEFAULT_PWD_FILE: &str = "./pwd.txt";
 
 lazy_static! {
-    static ref SHARED_DIR: String = std::env::var("SHARED_DIR").unwrap_or("./share".to_string());
-    static ref OPENVPN_FILE: String = std::env::var("OPENVPN_FILE").unwrap_or("./openvpn/bin/openvpn".to_string());
+    static ref RUNTIME_PATHS: (PathBuf, PathBuf) = resolve_runtime_paths();
+}
+
+fn resolve_runtime_paths() -> (PathBuf, PathBuf) {
+    let executable = env::current_exe().unwrap_or_else(|_| {
+        env::current_dir()
+            .unwrap_or_default()
+            .join("openaws-vpn-client")
+    });
+
+    runtime_paths(
+        &executable,
+        env::var_os("SHARED_DIR"),
+        env::var_os("OPENVPN_FILE"),
+    )
+}
+
+fn runtime_paths(
+    executable: &Path,
+    shared_override: Option<OsString>,
+    openvpn_override: Option<OsString>,
+) -> (PathBuf, PathBuf) {
+    let executable_dir = executable.parent().unwrap_or_else(|| Path::new("."));
+    let shared_dir = shared_override
+        .map(PathBuf::from)
+        .unwrap_or_else(|| executable_dir.join("share"));
+    let openvpn_file = openvpn_override
+        .map(PathBuf::from)
+        .unwrap_or_else(|| shared_dir.join("openvpn/bin/openvpn"));
+
+    (shared_dir, openvpn_file)
 }
 
 pub struct ProcessInfo {
@@ -37,11 +66,16 @@ pub struct AwsSaml {
 }
 
 pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16) -> AwsSaml {
-    let path = Path::new(SHARED_DIR.as_str()).join(DEFAULT_PWD_FILE);
+    let (shared_dir, openvpn_file) = &*RUNTIME_PATHS;
+    let path = shared_dir.join(DEFAULT_PWD_FILE);
     if !path.exists() {
-        println!("{:?} does not exist in {:?}!", path, env::current_dir().unwrap());
+        println!(
+            "{:?} does not exist in {:?}!",
+            path,
+            env::current_dir().unwrap()
+        );
     }
-    let out = tokio::process::Command::new(OPENVPN_FILE.as_str())
+    let out = tokio::process::Command::new(openvpn_file)
         .arg("--config")
         .arg(config)
         .arg("--verb")
@@ -54,7 +88,7 @@ pub async fn run_ovpn(log: Arc<Log>, config: PathBuf, addr: String, port: u16) -
         .arg("--auth-user-pass")
         .arg(DEFAULT_PWD_FILE)
         .stdout(Stdio::piped())
-        .current_dir(SHARED_DIR.as_str())
+        .current_dir(shared_dir)
         .spawn()
         .unwrap();
 
@@ -114,6 +148,7 @@ pub async fn connect_ovpn(
     saml: Saml,
     process_info: Arc<ProcessInfo>,
 ) -> i32 {
+    let (shared_dir, openvpn_file) = &*RUNTIME_PATHS;
     let temp = TempDir::new().unwrap();
     let temp_pwd = temp.child("pwd.txt");
 
@@ -127,7 +162,7 @@ pub async fn connect_ovpn(
     let b = std::fs::canonicalize(temp_pwd).unwrap().to_path_buf();
 
     let mut out = tokio::process::Command::new("pkexec")
-        .arg(OPENVPN_FILE.as_str())
+        .arg(openvpn_file)
         .arg("--config")
         .arg(config)
         .arg("--verb")
@@ -147,7 +182,7 @@ pub async fn connect_ovpn(
         .arg("--auth-user-pass")
         .arg(b)
         .stdout(Stdio::piped())
-        .current_dir(SHARED_DIR.as_str())
+        .current_dir(shared_dir)
         .kill_on_drop(true)
         .spawn()
         .unwrap();
@@ -230,4 +265,48 @@ fn rm_file_command(dir: &PathBuf) -> OsString {
     str.push("/usr/bin/env rm ");
     str.push(dir);
     str
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_paths;
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn resolves_assets_relative_to_the_executable() {
+        let (shared_dir, openvpn_file) =
+            runtime_paths(Path::new("/opt/openaws/openaws-vpn-client"), None, None);
+
+        assert_eq!(shared_dir, PathBuf::from("/opt/openaws/share"));
+        assert_eq!(
+            openvpn_file,
+            PathBuf::from("/opt/openaws/share/openvpn/bin/openvpn")
+        );
+    }
+
+    #[test]
+    fn preserves_runtime_path_overrides() {
+        let (shared_dir, openvpn_file) = runtime_paths(
+            Path::new("/opt/openaws/openaws-vpn-client"),
+            Some(OsString::from("/srv/openaws/share")),
+            None,
+        );
+
+        assert_eq!(shared_dir, PathBuf::from("/srv/openaws/share"));
+        assert_eq!(
+            openvpn_file,
+            PathBuf::from("/srv/openaws/share/openvpn/bin/openvpn")
+        );
+
+        let (_, openvpn_file) = runtime_paths(
+            Path::new("/opt/openaws/openaws-vpn-client"),
+            None,
+            Some(OsString::from("/usr/local/libexec/openvpn-aws")),
+        );
+        assert_eq!(
+            openvpn_file,
+            PathBuf::from("/usr/local/libexec/openvpn-aws")
+        );
+    }
 }
