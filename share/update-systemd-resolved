@@ -1,0 +1,54 @@
+#!/usr/bin/bash
+
+set -u
+
+resolvectl_command=${RESOLVECTL:-/usr/bin/resolvectl}
+
+if [[ -z "${dev:-}" || ! -x "$resolvectl_command" ]]; then
+    exit 0
+fi
+
+if [[ "${script_type:-}" == "down" ]]; then
+    "$resolvectl_command" revert "$dev"
+    exit 0
+fi
+
+if [[ "${script_type:-}" != "up" ]]; then
+    exit 0
+fi
+
+dns_servers=()
+domains=()
+
+for option_name in ${!foreign_option_@}; do
+    read -r option_type option_kind option_value _ <<< "${!option_name}"
+
+    if [[ "$option_type" != "dhcp-option" || -z "${option_value:-}" ]]; then
+        continue
+    fi
+
+    case "$option_kind" in
+        DNS)
+            dns_servers+=("$option_value")
+            ;;
+        DOMAIN | DOMAIN-SEARCH)
+            domains+=("$option_value")
+            ;;
+        DOMAIN-ROUTE)
+            domains+=("~${option_value#~}")
+            ;;
+    esac
+done
+
+if (( ${#dns_servers[@]} == 0 )); then
+    exit 0
+fi
+
+"$resolvectl_command" dns "$dev" "${dns_servers[@]}"
+
+if (( ${#domains[@]} == 0 )); then
+    domains=("~.")
+    printf 'No VPN DNS domains received; routing all DNS queries through %s.\n' "$dev"
+fi
+
+"$resolvectl_command" domain "$dev" "${domains[@]}"
